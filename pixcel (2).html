@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixcel — imagem em pixel art na planilha</title>
+<link rel="icon" id="favicon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%201%201'%3E%3Crect%20width='1'%20height='1'%20fill='%231B6B41'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<style>
+  :root{
+    --canvas:#EAEEF2;
+    --paper:#FFFFFF;
+    --ink:#1B1F24;
+    --muted:#697480;
+    --faint:#9aa4b0;
+    --line:#D7DDE4;
+    --line-soft:#E6EAEF;
+    --green:#1B6B41;
+    --green-press:#14512F;
+    --green-soft:#6FCF97;
+    --green-tint:#EAF4EE;
+    --chrome:#EDF0F3;
+    --chrome-ink:#9aa4b0;
+    --str:#9A5B00;
+    --num:#1A66C9;
+    --shadow:0 1px 2px rgba(27,31,36,.06), 0 12px 40px -18px rgba(27,31,36,.35);
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:Inter,system-ui,sans-serif;
+    color:var(--ink);
+    background:
+      linear-gradient(to right, var(--line-soft) 1px, transparent 1px) 0 0/26px 26px,
+      linear-gradient(to bottom, var(--line-soft) 1px, transparent 1px) 0 0/26px 26px,
+      var(--canvas);
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:32px 18px 56px;
+  }
+  .wrap{width:100%;max-width:940px}
+
+  .card{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    overflow:hidden;
+  }
+
+  /* formula bar (hero) */
+  .formula{
+    display:flex;align-items:stretch;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(to bottom,#fff,#fbfcfd);
+  }
+  .fx{
+    flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:54px;
+    font-family:"IBM Plex Mono",monospace;font-style:italic;font-size:15px;color:var(--muted);
+    border-right:1px solid var(--line);background:var(--chrome);user-select:none;
+  }
+  .expr{
+    flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:.18em;
+    flex-wrap:nowrap;overflow-x:auto;padding:14px 16px;
+    font-family:"Space Grotesk",sans-serif;font-weight:600;
+    font-size:clamp(15px,2.6vw,21px);letter-spacing:.2px;white-space:nowrap;scrollbar-width:none;
+  }
+  .expr::-webkit-scrollbar{display:none}
+  .expr .fn{color:var(--green)}
+  .expr .paren,.expr .sep{color:var(--faint)}
+  .expr .str{color:var(--str)}
+  .expr .num{color:var(--num)}
+  .expr .ph{color:var(--faint);font-weight:500;font-style:italic}
+
+  .body{padding:22px}
+
+  /* drop zone */
+  .drop{
+    position:relative;border:2px dashed var(--line);border-radius:12px;
+    background:
+      linear-gradient(to right, var(--line-soft) 1px, transparent 1px) 0 0/22px 22px,
+      linear-gradient(to bottom, var(--line-soft) 1px, transparent 1px) 0 0/22px 22px,
+      #fcfdfe;
+    min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    text-align:center;cursor:pointer;width:100%;
+    transition:border-color .18s ease, background-color .18s ease, transform .18s ease;
+  }
+  .drop:hover,.drop:focus-visible{border-color:var(--green-soft);outline:none}
+  .drop.drag{border-color:var(--green);background-color:var(--green-tint);transform:translateY(-1px)}
+  .drop .glyph{
+    width:54px;height:54px;border-radius:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:3px;padding:8px;
+    background:#fff;border:1px solid var(--line);margin-bottom:10px;box-shadow:0 6px 18px -12px rgba(27,31,36,.5);
+  }
+  .drop .glyph i{border-radius:2px;background:var(--line)}
+  .drop .glyph i:nth-child(1){background:var(--green)}
+  .drop .glyph i:nth-child(3){background:var(--green-soft)}
+  .drop .glyph i:nth-child(5){background:#E2B33A}
+  .drop .glyph i:nth-child(8){background:#C96B4A}
+  .drop h2{margin:2px 0 0;font-size:17px;font-weight:600}
+  .drop p{margin:0;color:var(--muted);font-size:13.5px}
+  .drop .formats{margin-top:8px;font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.4px;color:var(--faint)}
+
+  /* editor */
+  .editor{display:grid;grid-template-columns:248px 1fr;gap:22px;align-items:start}
+  @media (max-width:680px){
+    .editor{grid-template-columns:1fr}
+    .controls{order:2}
+    .stage{order:1}
+  }
+
+  .controls{display:flex;flex-direction:column;gap:18px}
+  .field label{display:block;font-size:12px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .sizeval{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:30px;line-height:1;color:var(--ink)}
+  .sizeval small{font-family:Inter;font-weight:500;font-size:13px;color:var(--muted);margin-left:6px}
+
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:transparent;cursor:pointer;margin-top:12px}
+  input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:6px;background:linear-gradient(to right,var(--green) var(--fill,40%),var(--line) var(--fill,40%))}
+  input[type=range]::-moz-range-track{height:6px;border-radius:6px;background:var(--line)}
+  input[type=range]::-moz-range-progress{height:6px;border-radius:6px;background:var(--green)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;margin-top:-6px;border-radius:4px;background:#fff;border:2px solid var(--green);box-shadow:0 1px 4px rgba(27,31,36,.25)}
+  input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:4px;background:#fff;border:2px solid var(--green);box-shadow:0 1px 4px rgba(27,31,36,.25)}
+  input[type=range]:focus-visible::-webkit-slider-thumb{outline:3px solid var(--green-soft);outline-offset:1px}
+
+  .presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+  .presets button{font-family:"IBM Plex Mono",monospace;font-size:12px;padding:5px 9px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--muted);cursor:pointer;transition:all .14s ease}
+  .presets button:hover{border-color:var(--green-soft);color:var(--ink)}
+  .presets button[aria-pressed=true]{background:var(--green-tint);border-color:var(--green);color:var(--green)}
+
+  /* tabs */
+  .tabs{display:flex;gap:4px;padding:3px;background:var(--chrome);border:1px solid var(--line);border-radius:9px}
+  .tab{flex:1 1 0;font-family:Inter;font-weight:600;font-size:13px;padding:7px 8px;border:none;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;transition:background .14s ease,color .14s ease}
+  .tab:hover{color:var(--ink)}
+  .tab[aria-selected=true]{background:#fff;color:var(--green);box-shadow:0 1px 2px rgba(27,31,36,.12)}
+  .tab:focus-visible{outline:3px solid var(--green-soft);outline-offset:1px}
+  .tabpanel{margin-top:16px}
+
+  /* palette */
+  .palette{display:flex;flex-wrap:wrap;gap:4px;margin-top:14px;align-items:center;min-height:18px}
+  .palette .sw{width:18px;height:18px;border-radius:4px;border:1px solid rgba(27,31,36,.14);box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}
+  .pal-note{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--faint)}
+
+  .readout{font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.7;color:var(--muted);border-top:1px solid var(--line-soft);padding-top:14px}
+  .readout b{color:var(--ink);font-weight:500}
+  .readout .range{color:var(--green)}
+  .readout .hint{display:block;margin-top:6px;color:var(--faint);font-size:11.5px;font-family:Inter}
+
+  .actions{display:flex;flex-direction:column;gap:10px}
+  .btn{font-family:Inter;font-weight:600;font-size:14.5px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 16px;border-radius:9px;border:1px solid transparent;cursor:pointer;transition:background .15s ease, transform .05s ease, box-shadow .15s ease, border-color .15s ease}
+  .btn-primary{background:var(--green);color:#fff;box-shadow:0 8px 20px -12px rgba(27,107,65,.9)}
+  .btn-primary:hover{background:var(--green-press)}
+  .btn-primary:active{transform:translateY(1px)}
+  .btn-primary:disabled{opacity:.6;cursor:progress}
+  .btn-primary:focus-visible{outline:3px solid var(--green-soft);outline-offset:2px}
+  .btn-secondary{background:#fff;border-color:var(--green);color:var(--green)}
+  .btn-secondary:hover{background:var(--green-tint)}
+  .btn-secondary:focus-visible{outline:3px solid var(--green-soft);outline-offset:2px}
+  .btn-text{background:transparent;border-color:transparent;color:var(--muted);font-weight:500;padding:6px}
+  .btn-text:hover{color:var(--ink)}
+  .btn-text:focus-visible{outline:3px solid var(--green-soft);outline-offset:2px;border-radius:6px}
+  .btn .xls{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:500;background:rgba(255,255,255,.22);padding:2px 5px;border-radius:4px}
+  .btn-secondary .gs{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:500;background:var(--green-tint);padding:2px 5px;border-radius:4px}
+
+  .note{font-size:12.5px;line-height:1.5;margin:2px 0 0;min-height:1px}
+  .note a{color:var(--green);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+  .note.ok{color:var(--green)}
+  .note.err{color:#B23B2E}
+
+  /* stage / spreadsheet preview */
+  .stage{min-width:0}
+  .sheet{
+    display:grid;grid-template-columns:34px 1fr;grid-template-rows:24px 1fr;
+    border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;box-shadow:0 1px 0 var(--line-soft);
+  }
+  .sheet .corner{background:var(--chrome);border-right:1px solid var(--line);border-bottom:1px solid var(--line);position:relative}
+  .sheet .corner::after{content:"";position:absolute;right:5px;bottom:5px;border-style:solid;border-width:0 0 8px 8px;border-color:transparent transparent var(--chrome-ink) transparent;opacity:.7}
+  .sheet .colhead{background:var(--chrome);border-bottom:1px solid var(--line)}
+  .sheet .rowgut{background:var(--chrome);border-right:1px solid var(--line)}
+  .cellarea{position:relative;display:flex;align-items:center;justify-content:center;padding:14px;background:#fff;overflow:hidden}
+  .frame{position:relative;line-height:0}
+  #preview{display:block;max-width:100%;image-rendering:pixelated;image-rendering:crisp-edges;image-rendering:-moz-crisp-edges}
+  .ants{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+  .ants rect{fill:none;stroke:var(--green);stroke-width:2;stroke-dasharray:7 4;vector-effect:non-scaling-stroke}
+  @media (prefers-reduced-motion:no-preference){.ants rect{animation:march 1s linear infinite}}
+  @keyframes march{to{stroke-dashoffset:-22}}
+
+  .caption{margin-top:12px;font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--faint);text-align:center}
+
+  .foot{margin-top:18px;text-align:center;color:var(--faint);font-size:12px}
+  .foot code{font-family:"IBM Plex Mono",monospace;color:var(--muted)}
+  .reveal{animation:none}
+  @media (prefers-reduced-motion:no-preference){.reveal{animation:rise .35s cubic-bezier(.2,.7,.2,1) both}}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="formula">
+        <div class="fx">fx</div>
+        <div class="expr" aria-label="Pixcel">
+          <span class="fn">=PIXCEL</span><span class="paren">(</span>
+          <span id="fArg" class="ph">imagem</span><span class="sep">;</span>
+          <span id="fSize" class="num">48</span><span class="sep">;</span>
+          <span id="fColors" class="num">Todas</span><span class="paren">)</span>
+        </div>
+      </div>
+
+      <div class="body">
+        <button type="button" id="drop" class="drop" aria-label="Enviar uma imagem">
+          <div class="glyph" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <h2>Solte uma imagem aqui</h2>
+          <p>ou clique para escolher um arquivo — também dá pra colar (Ctrl&nbsp;+&nbsp;V)</p>
+          <span class="formats">PNG · JPEG · GIF · WEBP</span>
+        </button>
+        <input type="file" id="file" accept="image/*" hidden>
+
+        <div id="editor" class="editor" hidden>
+          <div class="controls">
+            <div class="tabs" role="tablist" aria-label="Ajustes">
+              <button type="button" class="tab" id="tabSize" role="tab" aria-selected="true" aria-controls="panelSize">Tamanho</button>
+              <button type="button" class="tab" id="tabColors" role="tab" aria-selected="false" aria-controls="panelColors">Cores</button>
+            </div>
+
+            <div class="tabpanel" id="panelSize" role="tabpanel" aria-labelledby="tabSize">
+              <div class="field">
+                <label for="size">Resolução</label>
+                <div><span id="sizeNum" class="sizeval">48</span><small>colunas de largura</small></div>
+                <input type="range" id="size" min="8" max="150" value="48" step="1">
+                <div class="presets" id="presets">
+                  <button type="button" data-v="16">16</button>
+                  <button type="button" data-v="32">32</button>
+                  <button type="button" data-v="48">48</button>
+                  <button type="button" data-v="64">64</button>
+                  <button type="button" data-v="96">96</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="tabpanel" id="panelColors" role="tabpanel" aria-labelledby="tabColors" hidden>
+              <div class="field">
+                <label for="colors">Paleta de cores</label>
+                <div><span id="colorNum" class="sizeval">Todas</span><small id="colorSub">na imagem</small></div>
+                <input type="range" id="colors" min="2" max="64" value="64" step="1">
+                <div class="presets" id="colorPresets">
+                  <button type="button" data-v="2">2</button>
+                  <button type="button" data-v="4">4</button>
+                  <button type="button" data-v="8">8</button>
+                  <button type="button" data-v="16">16</button>
+                  <button type="button" data-v="32">32</button>
+                </div>
+                <div class="palette" id="palette"></div>
+              </div>
+            </div>
+
+            <div class="readout">
+              <div><b id="rCols">48</b> × <b id="rRows">—</b> células · <b id="rColors">—</b> cores</div>
+              <div>intervalo <span class="range" id="rRange">A1</span></div>
+              <span class="hint" id="rHint"></span>
+            </div>
+
+            <div class="actions">
+              <button type="button" id="download" class="btn btn-primary">
+                Baixar para Excel <span class="xls">.xlsx</span>
+              </button>
+              <button type="button" id="sheets" class="btn btn-secondary">
+                Copiar para o Google Sheets
+              </button>
+              <p class="note ok" id="sheetsMsg"></p>
+              <p class="note err" id="err"></p>
+              <button type="button" id="change" class="btn btn-text">Trocar imagem</button>
+            </div>
+          </div>
+
+          <div class="stage">
+            <div class="sheet">
+              <div class="corner" aria-hidden="true"></div>
+              <div class="colhead" aria-hidden="true"></div>
+              <div class="rowgut" aria-hidden="true"></div>
+              <div class="cellarea">
+                <div class="frame" id="frame">
+                  <canvas id="preview" width="48" height="48"></canvas>
+                  <svg class="ants" preserveAspectRatio="none" aria-hidden="true"><rect x="0" y="0" width="100%" height="100%"/></svg>
+                </div>
+              </div>
+            </div>
+            <div class="caption" id="caption">prévia · igual à planilha</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="foot">Tudo roda no seu navegador — nenhuma imagem é enviada para servidor algum. <code>pixcel</code></p>
+  </div>
+
+<script>
+(function(){
+  "use strict";
+  var img=null, baseName="imagem", pixel=null, rafPending=false, colorRaf=false;
+  var basePixel=null, baseColorMap=null, distinct=0, colorMax=64, colorVal=64;
+
+  var $=function(id){return document.getElementById(id);};
+  var drop=$("drop"), fileInput=$("file"), editor=$("editor"),
+      sizeEl=$("size"), sizeNum=$("sizeNum"), fSize=$("fSize"), fArg=$("fArg"), fColors=$("fColors"),
+      presets=$("presets"),
+      colorsEl=$("colors"), colorNum=$("colorNum"), colorSub=$("colorSub"), colorPresets=$("colorPresets"), paletteEl=$("palette"),
+      tabSize=$("tabSize"), tabColors=$("tabColors"), panelSize=$("panelSize"), panelColors=$("panelColors"),
+      canvas=$("preview"), ctx=canvas.getContext("2d"),
+      cellarea=document.querySelector(".cellarea"),
+      caption=$("caption"), errEl=$("err"), sheetsMsg=$("sheetsMsg"),
+      rCols=$("rCols"), rRows=$("rRows"), rColors=$("rColors"), rRange=$("rRange"), rHint=$("rHint"),
+      btn=$("download"), btnSheets=$("sheets");
+
+  function colLetter(n){var s="";while(n>0){var m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=Math.floor((n-1)/26);}return s;}
+  function fmt(n){return n.toLocaleString("pt-BR");}
+  function hx(v){v=v<0?0:v>255?255:v;return ("0"+v.toString(16)).slice(-2).toUpperCase();}
+  function setErr(m){errEl.textContent=m||"";}
+  function setMsg(m){sheetsMsg.textContent=m||"";}
+  function isImage(f){return f && /^image\//.test(f.type);}
+
+  function loadFile(f){
+    if(!isImage(f)){ setErr("Esse arquivo não é uma imagem. Tente um PNG ou JPEG."); return; }
+    setErr(""); setMsg("");
+    baseName=(f.name||"imagem").replace(/\.[^.]+$/,"") || "imagem";
+    var r=new FileReader();
+    r.onload=function(e){
+      var im=new Image();
+      im.onload=function(){
+        img=im;
+        drop.hidden=true; editor.hidden=false;
+        editor.classList.remove("reveal"); void editor.offsetWidth; editor.classList.add("reveal");
+        fArg.className=""; fArg.textContent='"'+f.name+'"'; fArg.classList.add("str");
+        colorVal=64; colorMax=64; selectTab("size");
+        recompute();
+      };
+      im.onerror=function(){ setErr("Não consegui abrir essa imagem. Tente outro arquivo."); };
+      im.src=e.target.result;
+    };
+    r.onerror=function(){ setErr("Falha ao ler o arquivo."); };
+    r.readAsDataURL(f);
+  }
+
+  function buildPixel(gw){
+    var ratio=img.naturalHeight/img.naturalWidth;
+    var gh=Math.max(1, Math.round(gw*ratio));
+    var c=document.createElement("canvas"); c.width=gw; c.height=gh;
+    var cx=c.getContext("2d");
+    cx.imageSmoothingEnabled=true; cx.imageSmoothingQuality="high";
+    cx.fillStyle="#ffffff"; cx.fillRect(0,0,gw,gh);
+    cx.drawImage(img,0,0,gw,gh);
+    return {gw:gw,gh:gh,data:cx.getImageData(0,0,gw,gh).data};
+  }
+
+  function renderPreview(p){
+    canvas.width=p.gw; canvas.height=p.gh;
+    var id=ctx.createImageData(p.gw,p.gh);
+    id.data.set(p.data);
+    ctx.putImageData(id,0,0);
+  }
+
+  // upscale the small canvas to fill the cell area, kept crisp (pixelated) = exactly how the sheet looks
+  function layoutPreview(){
+    if(!pixel) return;
+    var areaW=cellarea.clientWidth;
+    if(!areaW) return;
+    var avail=areaW-28; // cellarea padding (14 each side)
+    var maxH=Math.min(560, Math.max(260, window.innerHeight*0.62));
+    var w=avail, h=avail*pixel.gh/pixel.gw;
+    if(h>maxH){ h=maxH; w=maxH*pixel.gw/pixel.gh; }
+    canvas.style.width=Math.round(w)+"px";
+    canvas.style.height=Math.round(h)+"px";
+  }
+
+  function computeBaseColors(base){
+    var map=new Map(), n=base.gw*base.gh, d=base.data;
+    for(var p=0;p<n;p++){
+      var i=p*4, key=(d[i]<<16)|(d[i+1]<<8)|d[i+2], e=map.get(key);
+      if(e) e.count++; else map.set(key,{r:d[i],g:d[i+1],b:d[i+2],count:1});
+    }
+    return map;
+  }
+
+  // median-cut color quantization down to at most K colors
+  function quantize(base, colorMapObj, K){
+    var buckets=[Array.from(colorMapObj.values())];
+    while(buckets.length<K){
+      var bi=-1, bRange=-1, bAxis=0;
+      for(var b=0;b<buckets.length;b++){
+        var bk=buckets[b]; if(bk.length<2) continue;
+        var rmn=255,rmx=0,gmn=255,gmx=0,bmn=255,bmx=0;
+        for(var j=0;j<bk.length;j++){var c=bk[j];
+          if(c.r<rmn)rmn=c.r; if(c.r>rmx)rmx=c.r;
+          if(c.g<gmn)gmn=c.g; if(c.g>gmx)gmx=c.g;
+          if(c.b<bmn)bmn=c.b; if(c.b>bmx)bmx=c.b;}
+        var rr=rmx-rmn,gr=gmx-gmn,br=bmx-bmn;
+        var axis=(rr>=gr&&rr>=br)?0:(gr>=br?1:2), range=Math.max(rr,gr,br);
+        if(range>bRange){bRange=range;bi=b;bAxis=axis;}
+      }
+      if(bi<0) break; // nothing left to split
+      var bucket=buckets[bi], ax=bAxis;
+      bucket.sort(function(a,b){return ax===0?a.r-b.r:ax===1?a.g-b.g:a.b-b.b;});
+      var total=0; for(var j=0;j<bucket.length;j++) total+=bucket[j].count;
+      var half=total/2, acc=0, at=1;
+      for(var j=0;j<bucket.length;j++){acc+=bucket[j].count; if(acc>=half){at=j+1;break;}}
+      if(at<1)at=1; if(at>bucket.length-1)at=bucket.length-1;
+      buckets.splice(bi,1,bucket.slice(0,at),bucket.slice(at));
+    }
+    var palette=buckets.map(function(bk){
+      var sr=0,sg=0,sb=0,sc=0;
+      for(var j=0;j<bk.length;j++){var c=bk[j];sr+=c.r*c.count;sg+=c.g*c.count;sb+=c.b*c.count;sc+=c.count;}
+      return [Math.round(sr/sc),Math.round(sg/sc),Math.round(sb/sc)];
+    });
+    var nearest=new Map();
+    colorMapObj.forEach(function(c,key){
+      var idx=0,bd=Infinity;
+      for(var pi=0;pi<palette.length;pi++){
+        var dr=c.r-palette[pi][0],dg=c.g-palette[pi][1],db=c.b-palette[pi][2],dd=dr*dr+dg*dg+db*db;
+        if(dd<bd){bd=dd;idx=pi;}
+      }
+      nearest.set(key,idx);
+    });
+    var src=base.data, n=base.gw*base.gh, out=new Uint8ClampedArray(src.length);
+    for(var p=0;p<n;p++){
+      var i=p*4, key=(src[i]<<16)|(src[i+1]<<8)|src[i+2], col=palette[nearest.get(key)];
+      out[i]=col[0]; out[i+1]=col[1]; out[i+2]=col[2]; out[i+3]=255;
+    }
+    return {data:out, palette:palette};
+  }
+
+  // (re)build the downscaled base image + its color set for the current resolution
+  function buildBase(){
+    var gw=parseInt(sizeEl.value,10);
+    basePixel=buildPixel(gw);
+    baseColorMap=computeBaseColors(basePixel);
+    distinct=baseColorMap.size;
+    var wasFull = colorVal>=colorMax;        // were we showing all colors?
+    colorMax=Math.max(2, Math.min(64, distinct));
+    colorsEl.max=colorMax;
+    colorVal = wasFull ? colorMax : Math.max(2, Math.min(colorVal, colorMax));
+    colorsEl.value=colorVal;
+  }
+
+  // apply the chosen palette size to the base image -> final pixel data
+  function applyColors(){
+    if(!basePixel) return;
+    var full = colorVal>=colorMax || distinct<=colorVal;
+    var data, palette, used;
+    if(full){ data=basePixel.data; palette=null; used=distinct; }
+    else { var q=quantize(basePixel, baseColorMap, colorVal); data=q.data; palette=q.palette; used=colorVal; }
+    pixel={gw:basePixel.gw, gh:basePixel.gh, data:data, palette:palette, colors:used, full:full};
+    renderPreview(pixel);
+    requestAnimationFrame(layoutPreview);
+    updateReadout();
+    renderColorUI();
+  }
+
+  function updateReadout(){
+    var gw=pixel.gw, gh=pixel.gh, cells=gw*gh;
+    var pct=(gw-sizeEl.min)/(sizeEl.max-sizeEl.min)*100;
+    sizeEl.style.setProperty("--fill",pct+"%");
+    sizeNum.textContent=gw; fSize.textContent=gw;
+    rCols.textContent=gw; rRows.textContent=gh; rColors.textContent=fmt(pixel.colors);
+    rRange.textContent="A1:"+colLetter(gw)+gh;
+    rHint.textContent = cells>9000 ? "Tamanho grande — a planilha leva alguns segundos para gerar." : "";
+    caption.textContent="prévia · "+gw+" × "+gh+" células · "+fmt(pixel.colors)+" cores";
+    Array.prototype.forEach.call(presets.children,function(b){
+      b.setAttribute("aria-pressed", String(parseInt(b.dataset.v,10)===gw));
+    });
+  }
+
+  function renderColorUI(){
+    var full=pixel.full;
+    colorNum.textContent = full ? "Todas" : String(colorVal);
+    colorSub.textContent = full ? ("("+fmt(distinct)+" na imagem)") : "cores";
+    fColors.textContent = full ? "Todas" : String(colorVal);
+    var pct=(colorVal-colorsEl.min)/((colorMax-colorsEl.min)||1)*100;
+    colorsEl.style.setProperty("--fill",pct+"%");
+    Array.prototype.forEach.call(colorPresets.children,function(b){
+      var v=parseInt(b.dataset.v,10);
+      b.setAttribute("aria-pressed", String(!full && v===colorVal));
+      b.disabled = v>colorMax;
+      b.style.opacity = v>colorMax ? ".4" : "";
+    });
+    if(full || !pixel.palette){
+      paletteEl.innerHTML='<span class="pal-note">todas as cores da imagem ('+fmt(distinct)+')</span>';
+    }else{
+      var pal=pixel.palette.slice().sort(function(a,b){
+        return (0.299*a[0]+0.587*a[1]+0.114*a[2])-(0.299*b[0]+0.587*b[1]+0.114*b[2]);
+      });
+      var html="";
+      for(var i=0;i<pal.length;i++){
+        var hexc="#"+hx(pal[i][0])+hx(pal[i][1])+hx(pal[i][2]);
+        html+='<span class="sw" style="background:'+hexc+'" title="'+hexc+'"></span>';
+      }
+      paletteEl.innerHTML=html;
+    }
+  }
+
+  function recompute(){ if(!img) return; buildBase(); applyColors(); }
+
+  function scheduleRecompute(){
+    var gw=parseInt(sizeEl.value,10);
+    var pct=(gw-sizeEl.min)/(sizeEl.max-sizeEl.min)*100;
+    sizeEl.style.setProperty("--fill",pct+"%");
+    sizeNum.textContent=gw; fSize.textContent=gw; rCols.textContent=gw;
+    if(rafPending) return; rafPending=true;
+    requestAnimationFrame(function(){ rafPending=false; recompute(); });
+  }
+
+  function scheduleColors(){
+    colorVal=parseInt(colorsEl.value,10);
+    var full=colorVal>=colorMax;
+    colorNum.textContent = full ? "Todas" : String(colorVal);
+    var pct=(colorVal-colorsEl.min)/((colorMax-colorsEl.min)||1)*100;
+    colorsEl.style.setProperty("--fill",pct+"%");
+    if(colorRaf) return; colorRaf=true;
+    requestAnimationFrame(function(){ colorRaf=false; applyColors(); });
+  }
+
+  function selectTab(which){
+    var colors = which==="colors";
+    tabSize.setAttribute("aria-selected", String(!colors));
+    tabColors.setAttribute("aria-selected", String(colors));
+    panelSize.hidden = colors;
+    panelColors.hidden = !colors;
+  }
+
+  /* ----- export: Excel .xlsx ----- */
+  function download(){
+    if(!pixel || !img) return;
+    if(typeof ExcelJS==="undefined"){
+      setErr("A biblioteca de planilha não carregou. Verifique a conexão e recarregue a página.");
+      return;
+    }
+    setErr(""); setMsg("");
+    var label=btn.innerHTML;
+    btn.disabled=true; btn.textContent="Gerando planilha…";
+    setTimeout(function(){
+      try{
+        var p=pixel;
+        var wb=new ExcelJS.Workbook(); wb.creator="Pixcel";
+        var ws=wb.addWorksheet("pixelart",{views:[{showGridLines:false}]});
+        var COLW=2.14, ROWH=15; // tuned so each cell is roughly square (~20px)
+        for(var c=1;c<=p.gw;c++){ ws.getColumn(c).width=COLW; }
+        for(var r=1;r<=p.gh;r++){
+          var row=ws.getRow(r); row.height=ROWH;
+          for(var col=1;col<=p.gw;col++){
+            var i=((r-1)*p.gw+(col-1))*4;
+            var argb="FF"+hx(p.data[i])+hx(p.data[i+1])+hx(p.data[i+2]);
+            row.getCell(col).fill={type:"pattern",pattern:"solid",fgColor:{argb:argb}};
+          }
+        }
+        wb.xlsx.writeBuffer().then(function(buf){
+          var blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+          var url=URL.createObjectURL(blob);
+          var a=document.createElement("a");
+          a.href=url; a.download=baseName+"_"+p.gw+"x"+p.gh+".xlsx";
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(function(){URL.revokeObjectURL(url);},2000);
+          btn.disabled=false; btn.innerHTML=label;
+        }).catch(function(e){
+          console.error(e); setErr("Não foi possível gerar o arquivo. Tente um tamanho menor.");
+          btn.disabled=false; btn.innerHTML=label;
+        });
+      }catch(e){
+        console.error(e); setErr("Algo deu errado ao montar a planilha.");
+        btn.disabled=false; btn.innerHTML=label;
+      }
+    },30);
+  }
+
+  /* ----- export: Google Sheets (copia tabela colorida p/ colar) ----- */
+  // Sheets default cell is wide (~100px) and short (~21px); repeating each row makes each pixel a square block on paste.
+  function buildHTMLTable(p, rowRepeat){
+    rowRepeat = rowRepeat || 1;
+    var out=['<meta charset="utf-8"><table style="border-collapse:collapse;border-spacing:0">'];
+    for(var r=0;r<p.gh;r++){
+      var tr="<tr>";
+      for(var c=0;c<p.gw;c++){
+        var i=(r*p.gw+c)*4;
+        var hex="#"+hx(p.data[i])+hx(p.data[i+1])+hx(p.data[i+2]);
+        tr+='<td style="background-color:'+hex+';padding:0;border:1px solid '+hex+'"></td>';
+      }
+      tr+="</tr>";
+      for(var k=0;k<rowRepeat;k++) out.push(tr);
+    }
+    out.push("</table>");
+    return out.join("");
+  }
+  function copyHTMLSync(html){
+    try{
+      var holder=document.createElement("div");
+      holder.style.position="fixed"; holder.style.left="-99999px"; holder.style.top="0";
+      holder.setAttribute("contenteditable","true"); holder.innerHTML=html;
+      document.body.appendChild(holder);
+      var range=document.createRange(); range.selectNodeContents(holder);
+      var sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      var ok=document.execCommand("copy");
+      sel.removeAllRanges(); document.body.removeChild(holder);
+      return ok;
+    }catch(e){ return false; }
+  }
+  function copyHTMLAsync(html){
+    if(navigator.clipboard && window.ClipboardItem){
+      try{
+        var item=new ClipboardItem({
+          "text/html":new Blob([html],{type:"text/html"}),
+          "text/plain":new Blob([" "],{type:"text/plain"})
+        });
+        return navigator.clipboard.write([item]).then(function(){return true;}).catch(function(){return false;});
+      }catch(e){ return Promise.resolve(false); }
+    }
+    return Promise.resolve(false);
+  }
+  function copyForSheets(){
+    if(!pixel || !img) return;
+    setErr("");
+    var REP=5; // ~100px column vs ~21px row in Sheets → 5 rows per pixel ≈ square
+    var big = pixel.gw*pixel.gh*REP > 12000;
+    var link = ' <a href="https://sheets.new" target="_blank" rel="noopener">abrir o Sheets &#8599;</a>';
+    var msg = "Copiado já no formato certo! Cole com Ctrl+V — os pixels saem quadrados. As células ficam grandes, então use o zoom do Sheets pra ver tudo.";
+    var heavy = big ? " Imagem grande: se o Sheets travar ao colar, baixe o .xlsx e use Arquivo → Importar." : "";
+    var html=buildHTMLTable(pixel, REP);
+    var ok=copyHTMLSync(html);
+    if(ok){
+      sheetsMsg.innerHTML=msg+heavy+link;
+    }else{
+      copyHTMLAsync(html).then(function(done){
+        if(done){ sheetsMsg.innerHTML=msg+heavy+link; }
+        else { setMsg(""); setErr("Não consegui copiar automaticamente. Baixe o .xlsx e use Arquivo → Importar no Sheets."); }
+      });
+    }
+  }
+
+  /* ----- events ----- */
+  drop.addEventListener("click",function(){ fileInput.click(); });
+  fileInput.addEventListener("change",function(e){ if(e.target.files[0]) loadFile(e.target.files[0]); fileInput.value=""; });
+  ["dragenter","dragover"].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); drop.classList.add("drag"); }); });
+  ["dragleave","dragend","drop"].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); drop.classList.remove("drag"); }); });
+  drop.addEventListener("drop",function(e){ var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(f) loadFile(f); });
+  document.addEventListener("paste",function(e){
+    var items=e.clipboardData&&e.clipboardData.items; if(!items) return;
+    for(var i=0;i<items.length;i++){
+      if(items[i].type&&items[i].type.indexOf("image")===0){ var f=items[i].getAsFile(); if(f){ loadFile(f); e.preventDefault(); break; } }
+    }
+  });
+  sizeEl.addEventListener("input",scheduleRecompute);
+  presets.addEventListener("click",function(e){ var b=e.target.closest("button"); if(!b) return; sizeEl.value=b.dataset.v; recompute(); });
+  colorsEl.addEventListener("input",scheduleColors);
+  colorPresets.addEventListener("click",function(e){
+    var b=e.target.closest("button"); if(!b||b.disabled) return;
+    colorVal=Math.max(2, Math.min(parseInt(b.dataset.v,10), colorMax));
+    colorsEl.value=colorVal; applyColors();
+  });
+  tabSize.addEventListener("click",function(){ selectTab("size"); });
+  tabColors.addEventListener("click",function(){ selectTab("colors"); });
+  $("change").addEventListener("click",function(){
+    editor.hidden=true; drop.hidden=false; img=null; pixel=null; basePixel=null;
+    fArg.className="ph"; fArg.textContent="imagem"; fColors.textContent="Todas"; setErr(""); setMsg("");
+  });
+  btn.addEventListener("click",download);
+  btnSheets.addEventListener("click",copyForSheets);
+  window.addEventListener("resize",function(){ requestAnimationFrame(layoutPreview); });
+})();
+</script>
+</body>
+</html>
